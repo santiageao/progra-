@@ -1,5 +1,20 @@
 import {pool} from "../config/database.js";
 
+/**
+ * Valida que el código y el nombre de una materia sean únicos para un usuario específico.
+ *
+ * @async
+ * @function ensureUniqueFields
+ * @param {string|number} userId - Identificador único del usuario dueño de la materia.
+ * @param {Object} materia - Objeto que contiene los datos de la materia a validar.
+ * @param {string} [materia.codigo] - Código identificador de la materia (opcional).
+ * @param {string} [materia.nombre] - Nombre de la materia (opcional).
+ * @param {string|number} [excludeId] - ID de una materia existente a excluir de la validación.
+ * @returns {Promise<void>} Retorna ningún valor si las validaciones son exitosas.
+ * @throws {HttpError} Código 409 (DUPLICATE_CODE) si el código ya está registrado para ese usuario.
+ * @throws {HttpError} Código 409 (DUPLICATE_NAME) si el nombre ya está registrado para ese usuario.
+ */
+
 const sortableFields = {
     id: "m.id_materia",
     nombre: "m.nombre",
@@ -28,6 +43,23 @@ function mapMateria(row) {
     creditos: row.creditos,
     color: row.color,
     activa: row.activa,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
+function mapTarea(row) {
+  return {
+    id: row.id,
+    materiaId: row.materiaId,
+    titulo: row.titulo,
+    descripcion: row.descripcion,
+    fechaEntrega: row.fechaEntrega,
+    horaEntrega: row.horaEntrega,
+    prioridad: row.prioridad,
+    estado: row.estado,
+    cargaEstimadaMinutos: row.cargaEstimadaMinutos,
+    porcentajeAvance: row.porcentajeAvance,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -91,6 +123,63 @@ export async function findAllByUserId(userId, filters = {}) {
     total: countRows[0].total
 
   };
+}
+
+/**
+ * Devuelve todas las tareas asociadas a una materia específica siempre que pertenezcan al mismo usuario.
+ *
+ * @async
+ * @function findTareasByMateriaIdAndUserId
+ * @param {number|string} materiaId - Identificador de la materia.
+ * @param {number|string} userId - Identificador del usuario dueño de la materia.
+ * @returns {Promise<Array<Object>>} Lista de tareas de la materia.
+ */
+export async function findTareasByMateriaIdAndUserId(materiaId, userId) {
+  const [rows] = await pool.execute(
+    `SELECT
+       t.id_tarea AS id,
+       t.id_materia AS materiaId,
+       t.titulo,
+       t.descripcion,
+       t.fecha_entrega AS fechaEntrega,
+       t.hora_entrega AS horaEntrega,
+       t.prioridad,
+       t.estado,
+       t.carga_estimada_minutos AS cargaEstimadaMinutos,
+       t.porcentaje_avance AS porcentajeAvance,
+       t.created_at AS createdAt,
+       t.updated_at AS updatedAt
+     FROM tarea t
+     INNER JOIN materia m ON m.id_materia = t.id_materia
+     WHERE t.id_materia = ? AND m.id_usuario = ?
+     ORDER BY t.fecha_entrega ASC, t.created_at DESC`,
+    [materiaId, userId]
+  );
+
+  return rows.map(mapTarea);
+}
+
+export async function findEventosByMateriaAndUserId(id, userId) {
+  const [rows] = await pool.execute(
+    `SELECT
+       e.id_evento AS id,
+       e.id_materia AS materiaId,
+       e.titulo,
+       e.descripcion,
+       e.fecha,
+       e.hora_inicio AS horaInicio,
+       e.hora_fin AS horaFin,
+       e.tipo,
+       e.created_at AS createdAt,
+       e.updated_at AS updatedAt
+     FROM evento e
+     INNER JOIN materia m ON m.id_materia = e.id_materia
+     WHERE m.id_materia = ? AND m.id_usuario = ?
+     ORDER BY e.fecha ASC, e.hora_inicio ASC, e.created_at DESC`,
+    [id, userId]
+  );
+
+  return rows;
 }
 
 export async function findByIdAndUserId(id, userId) {
